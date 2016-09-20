@@ -1,0 +1,150 @@
+<link rel="import" href="../polymer/polymer.html">
+
+<dom-module id="md-upload-progress">
+  <style>
+    :host{
+      display:block;
+      width:100%;
+      font-family:'robotoregular';
+    }
+    :host .row{
+      display:-webkit-flex;
+      display:flex;
+      -webkit-align-items: flex-end;
+      align-items:flex-end;
+      width:100%;
+      margin-top:.25em;
+      height:48px;
+    }
+    :host .row .flex-end{
+      margin-left:auto;
+    }
+    :host .row .icon-done{
+      color:var(--md-upload-progress-complete-color,#212121);
+      max-height:0;
+      max-width:0;
+      opacity:0;
+      margin-bottom:6px;
+      transition:  all 0.25s linear;
+    }
+    :host .row .status-name{
+      color:var(--md-upload-progress-complete-color,#212121);
+      max-height:0;
+      max-width:0;
+      opacity:0;
+      margin-bottom:6px;
+      transition:  all 0.25s linear;
+      margin-left:1em;
+      font-size:14px;
+    }
+    :host .row .status-name[completed]{
+      color:var(--md-upload-progress-complete-color,#212121);
+      max-height:none;
+      max-width:none;
+      opacity:1;
+      margin-bottom:6px;
+      transition:  all 0.25s linear;
+    }
+    :host .row .icon-done[completed]{
+      max-height:24px;
+      max-width:24px;
+      opacity:1;
+      transition:  all 0.25s linear;
+    }
+    :host .row .progress-info{
+      display:-webkit-flex;
+      display:flex;
+      -webkit-flex-direction: column;
+      flex-direction: column;
+    }
+    :host .row .progress-info .name{
+      font-family:'robotomedium';
+      font-size:14px;
+    }
+    :host .row .progress-info .progress-stats{
+      font-size:12px;
+      color:var(--md-upload-progress-text-color,#757575);
+    }
+    :host .row .progress-info[completed]{
+      display:none;
+    }
+    :host .row .progress-info .progress-stats .size{
+      margin-right:.5em;
+    }
+    :host .row .icon-margin{
+      margin-bottom:6px;
+    }
+    :host [remove]{
+      cursor:pointer;
+    }
+    :host .icon-close[remove]:hover{
+      color:var(--md-upload-progress-color,#2196F3);
+    }
+    :host paper-progress {
+      --paper-progress-active-color:var(--md-upload-progress-color,#2196F3);
+      width: 100%;
+      height: 2px;
+    }
+    :host .row .progress-info[error]{
+      display:none;
+    }
+    :host .icon-close[remove][error]:hover{
+      color:var(--md-upload-progress-error-color,#B71C1C);
+    }
+    :host .row .status-name[error]{
+      color:var(--md-upload-progress-error-color,#B71C1C);
+      max-height:none;
+      max-width:none;
+      opacity:1;
+      margin-bottom:6px;
+      transition:  all 0.25s linear;
+    }
+    :host .row .icon-done[error]{
+      color:var(--md-upload-progress-error-color,#B71C1C);
+      max-height:24px;
+      max-width:24px;
+      opacity:1;
+      transition:  all 0.25s linear;
+    }
+    :host .row .icon-done[error]:before{
+      content:'\eb78';
+    }
+  </style>
+  <template>
+    <div class="row">
+      <span class="icon-done" completed$="[[file.completed]]" error$="[[file.error]]"></span>
+      <span class="status-name" completed$="[[file.completed]]" error$="[[file.error]]">[[file.id]]</span>
+      <div class="progress-info" completed$="[[file.completed]]" error$="[[file.error]]">
+        <span class="name">[[file.id]]</span>
+        <div class="progress-stats">
+          <span class="size">[[file.size]]</span>
+          <span>[[file.progress]]% uploaded</span>
+        </div>
+      </div>
+      <span id="iconClose" class="icon-close flex-end icon-margin" remove data-id$="[[file.idStamp]]" error$="[[file.error]]"></span>
+    </div>
+    <paper-progress id="progress" value="{{file.progress}}" error$="[[file.error]]"></paper-progress>
+  </template>
+</dom-module>
+<script>
+
+  Polymer({
+
+    is: 'md-upload-progress',
+
+    behaviors:[],
+
+    properties: {
+      file: Object
+    },
+
+    listeners:{
+
+    },
+
+    ready:function(){
+
+    }
+  });
+
+</script>

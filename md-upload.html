@@ -1,0 +1,607 @@
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../elliptical-polymer-behaviors/component-behavior.html">
+<link rel="import" href="../elliptical-polymer-behaviors/utils-behavior.html">
+<link rel="import" href="../paper-progress/paper-progress.html">
+<link rel="import" href="md-upload-progress.html">
+<dom-module id="md-upload">
+  <style>
+    :host {
+      border: var(--md-upload-border,2px dashed #dadada);
+      background: var(--md-upload-background,#f2f2f2);
+      padding: 1em;
+      font-family:'robotoregular';
+      color:var(--md-upload-label-color,#757575);
+      display:block;
+    }
+
+    :host.hide{
+      display:none;
+    }
+
+    :host.drag-over{
+      border: var(--md-upload-border-active,2px dashed #2196F3);
+      background:var(--md-upload-background-active,#E3F2FD);
+      color:var(--md-upload-label-color-active,#1565C0);
+    }
+
+    :host .drop-zone {
+      display: -webkit-flex;
+      display: flex;
+      -webkit-align-items: center;
+      align-items:center;
+    }
+
+    :host .drop-zone .drop-label{
+      font-size:14px;
+    }
+
+    :host .drop-zone .icon{
+      margin-right:.5em;
+    }
+
+    :host .drop-zone > paper-button {
+      margin-right: 2em;
+      background:var(--md-upload-paper-button-color,#2196F3);
+      color:var(--md-upload-paper-button-label-color,#fff);
+      font-size:14px;
+      line-height:normal;
+    }
+
+    :host input[type=file]{
+      visibility: hidden;
+    }
+  </style>
+  <template>
+    <div class="drop-zone">
+      <paper-button raised>[[buttonLabel]]</paper-button>
+      <span class="icon-file-upload icon"></span>
+      <span class="drop-label">Drop files here...</span>
+      <input type="file" id="inputFile" multiple="multiple">
+    </div>
+    <div class="progress">
+      <template is="dom-repeat" items="[[files]]" as="file">
+        <md-upload-progress file="[[file]]"></md-upload-progress>
+      </template>
+    </div>
+  </template>
+</dom-module>
+<script>
+
+  /*
+   *  File Entity
+   *
+   *  File:{
+   *     id:<String>
+   *     idStamp:<String>
+   *     blob:<Blob>
+   *     url:<String>
+   *     dataUrl:<String>
+   *     size:<String>
+   *     total:<Number>
+   *     type:<String>
+   *     isImage:<Boolean>
+   *     progress:<Number>
+   *     completed:<Boolean>
+   *     queued:<Boolean>
+   *     error:<Boolean>
+   *  }
+ */
+
+  Polymer({
+
+    is: 'md-upload',
+
+    behaviors: [Elliptical.ComponentBehavior,Elliptical.UtilsBehavior],
+
+    properties: {
+
+      id:{
+        type:String,
+        value:undefined
+      },
+
+      dataId:{
+        type:String,
+        value:null
+      },
+
+      buttonLabel: {
+        type: String,
+        value: 'Upload'
+      },
+
+      maxSize:{
+        type:Number,
+        value:Infinity
+      },
+
+      service:{
+        type:String,
+        value:null
+      },
+
+      postUrl:{
+        type:String,
+        value:null
+      },
+
+      files: {
+        type: Array,
+        notify: true,
+        value: function() {
+          return [];
+        }
+      },
+
+      demoService:{
+        type:Boolean,
+        value:false
+      },
+
+      _db:{
+        type:Object,
+        value:null
+      },
+
+      _service:{
+        type:Object,
+        value:null
+      },
+
+      _useService:{
+        type:Boolean,
+        value:true
+      },
+
+      _xhr:{
+        type:Object,
+        value:null
+      },
+
+      _isRunning:{
+        type:Boolean,
+        value:false
+      },
+
+      _currentFile:{
+        type:Object,
+        value:null
+      }
+
+    },
+
+    listeners: {
+      dragover: '_onDragover',
+      dragleave: '_onDragleave',
+      drop: '_onDrop'
+    },
+
+    /**
+     *  ready
+     */
+    ready: function () {
+      var self=this;
+      this._setUtils();
+      this._setId();
+      //if postUrl prop is set, the component will use an internal XMLHttpRequest instance
+      if(this.postUrl) {
+        this._useService=false;
+        var xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener("progress", this._onXhrUploadProgress.bind(this));
+        xhr.upload.addEventListener("load",this._onXhrUploadComplete.bind(this));
+        xhr.upload.addEventListener("error",this._onXhrUploadError.bind(this));
+        this._xhr=xhr;
+
+      }else if(this.service){
+        var Service=this.$service(this.service);
+        this._service=new Service();
+        this._service.onProgress(function(e){
+          self._onServiceUploadProgress(e);
+        });
+      }else{
+        //default to fake service for demo purposes
+        this._service=new this._fakeService();
+        this._service.onProgress(function(e){
+          self._onServiceUploadProgress(e);
+        });
+        console.warn('Warning: md-upload requires a declared postUrl attribute or a file service attribute');
+      }
+
+      this._events();
+    },
+
+    /**
+     *  detached
+     */
+    detached:function(){
+      if(this._xhr) this._destroyXhrEvents();
+    },
+
+    /**
+     *  events
+     */
+    _events:function(){
+      var click=this._data.click;
+      this._event(this.element,click,'paper-button',this._onClick.bind(this));
+      this._event(this.element,'change','input[type="file"]',this._onFileChange.bind(this));
+      this._event(this.element,click,'[remove]',this._onFileRemove.bind(this));
+    },
+
+    /**
+     *  destroy any XMLHttpRequest listeners on element destruction
+     */
+    _destroyXhrEvents:function(){
+      var xhr=this._xhr;
+      xhr.upload.removeEventListener("progress", this._onXhrUploadProgress.bind(this));
+      xhr.upload.removeEventListener("load",this._onXhrUploadComplete.bind(this));
+      xhr.upload.removeEventListener("error",this._onXhrUploadError.bind(this));
+      this._xhr=null;
+
+    },
+
+    _onDragover:function(event){
+      event.preventDefault();
+      this.classList.add('drag-over');
+    },
+
+    _onDragleave:function(event){
+      event.preventDefault();
+      this.classList.remove('drag-over');
+    },
+
+    _onDrop:function(event){
+      event.preventDefault();
+      this.classList.remove('drag-over');
+      this._fileChanges(event.dataTransfer.files);
+    },
+
+    /**
+     *  set component id prop
+     */
+    _setId:function(){
+      if(!this.id){
+        if(this.dataId){
+          this.id=this.dataId
+        }else{
+          var random=this._utils.random;
+          this.id='upload-' + random.id(4);
+        }
+      }
+    },
+
+    /**
+     *  input file click event
+     */
+    _onClick:function(){
+      var file=$(this.$.inputFile);
+      file.trigger('click');
+    },
+
+    /**
+     * called on file select change
+     * @param event {object}
+     * @private
+     */
+    _onFileChange: function(event){
+      var files=event.target.files;
+      this._fileChanges(files);
+    },
+
+    /**
+     * file change handler
+     * @param files {array}
+     * @private
+     */
+    _fileChanges: function(files){
+      var random=this._utils.random;
+      var length=(files.length > this.maxSize) ? this.maxSize : files.length;
+
+      //iterate the file blobs
+      for(var i=0;i<length;i++){
+
+        //create the file entity object
+        var file=files[i]; //file blob
+        var total=parseFloat(file.size/1000).toFixed(2);
+        var f={
+          id:file.name,
+          idStamp:random.id(8),
+          size: total.toString() + ' KB',
+          total:file.size,
+          progress:0,
+          type:file.type,
+          completed:false,
+          error:false,
+          isImage:this._isImageType(file.type),
+          queued:true,
+          blob:file /** assign the file blob itself to the blob property of the entity object **/
+        };
+
+        //push the file entity objects onto the entity file objects array
+        this.push('files',f);
+      }
+      //upload/process the new files
+      this._processFiles();
+    },
+
+    /**
+     *   process files intermediary event
+     */
+    _processFiles:function(){
+      //queue request if running
+      if(this._isRunning) this._queueRequest();
+      else{
+        var file=this._popFileQueue();
+        if(file){
+          this._currentFile=file;
+          this._isRunning=true;
+          if(this._useService) this._uploadFileService(file); //file service handler
+          else this._uploadFileXhr(file); // internal XMLHttpRequest handler
+        }
+      }
+    },
+
+    /**
+     *  pop file queue
+     */
+    _popFileQueue:function(){
+      var files=this.files;
+      var length=files.length;
+      var file=null;
+      for(var i=0;i<length;i++){
+        if(files[i].queued){
+          file=files[i];
+          file.queued=false;
+          break;
+        }
+      }
+      return file;
+    },
+
+    /**
+     *  queued processFiles request...queued processFiles is triggered when a currently running request has ended
+     */
+    _queueRequest:function(){
+      var self=this;
+      var intervalId=setInterval(function(){
+        if(!self._isRunning){
+          clearInterval(intervalId);
+          self._processFiles();
+        }
+      },500);
+    },
+
+    /**
+     *  is file an image
+     *  @param type {string}
+     */
+    _isImageType:function(type){
+      return (type.indexOf('image')>-1);
+    },
+
+    /**
+     *  gets the index of the file in the files array
+     *  @param file {object}
+     */
+    _getIndexByFile:function(file){
+      var files=this.files;
+      return files.indexOf(file);
+    },
+
+    /**
+     *  remove file from files array handler
+     *  @param event {object}
+     */
+    _onFileRemove:function(event){
+      var target=event.target;
+      var id=target.dataset.id;
+      var array=this._utils.array;
+      var file=array.findById(this.files,id,'idStamp');
+      var index=this._getIndexByFile(file);
+      this.splice('files',index,1);
+    },
+
+    /**
+     *  upload file by service
+     *  @param file {object}
+     */
+    _uploadFileService:function(file){
+      var self=this;
+      var fileService=this._service;
+      fileService.post(file,function(err,data){
+         //completed
+        if(!err) self._onServiceUploadCompleted(data);
+        else self._onServiceUploadError(err,data);
+      });
+    },
+
+    /**
+     *  progress event handler for service upload
+     *  @param event {object}
+     */
+    _onServiceUploadProgress:function(event){
+      var file=this._currentFile;
+      var index=this._getIndexByFile(file);
+      var progress=event.progress;
+      file.progress=progress;
+      var path='files.' + index.toString() + '.progress';
+      this.notifyPath(path,progress);
+    },
+
+    /**
+     *  completed event handler for service upload
+     *  @param file {object}
+     */
+    _onServiceUploadCompleted:function(file){
+      this._isRunning=false;
+      var index=this._getIndexByFile(file);
+      file.completed=true;
+      file.progress=100;
+      var path='files.' + index.toString() + '.progress';
+      var path2='files.' + index.toString() + '.completed';
+      this.notifyPath(path,100);
+      this.notifyPath(path2,true);
+      this._fireEvent('complete',file);
+      this._currentFile=null;
+      this._processFiles();
+    },
+
+    /**
+     *  error event handler for service upload
+     *  @param err {object}
+     *  @param file {object}
+     */
+    _onServiceUploadError:function(err,file){
+      this._isRunning=false;
+      var index=this._getIndexByFile(file);
+      file.progress=0;
+      file.error=true;
+      var oldId=file.id;
+      var id='Error: ' + err.message + ' ' + file.id;
+      var path='files.' + index.toString() + '.progress';
+      var path2='files.' + index.toString() + '.error';
+      var path3='files.' + index.toString() + '.id';
+      this.notifyPath(path,0);
+      this.notifyPath(path2,true);
+      this.notifyPath(path3,id);
+      file.id=oldId;
+      this._fireEvent('error',file);
+      this._currentFile=null;
+      this._processFiles();
+    },
+
+    /**
+     * upload a file using internal XMLHttpRequest instance
+     * @param file {object}
+     * @private
+     */
+    _uploadFileXhr: function(file){
+      this._currentFile=file;
+      var postUrl=this.postUrl;
+      var formData = new FormData();
+      //upload the blob, not the entity object abstraction
+      formData.append('file',file.blob);
+      var xhr=this._xhr;
+      xhr.open("POST", postUrl);
+      xhr.overrideMimeType('text/plain; charset=x-user-defined-binary');
+      xhr.send(formData);
+    },
+
+    /**
+     * XMLHttpRequest progress event handler
+     * @param event {object}
+     * @private
+     */
+    _onXhrUploadProgress:function(event){
+      var file=this._currentFile;
+      var index=this._getIndexByFile(file);
+      var progress=Math.round((event.loaded * 100) / event.total);
+      file.progress=progress;
+      var path='files.' + index.toString() + '.progress';
+      this.notifyPath(path,progress);
+    },
+
+    /**
+     * XMLHttpRequest completed event handler
+     * @param event {object}
+     * @private
+     */
+    _onXhrUploadComplete:function(event){
+      this._isRunning=false;
+      var file=this._currentFile;
+      var index=this._getIndexByFile(file);
+      file.completed=true;
+      file.progress=100;
+      var path='files.' + index.toString() + '.progress';
+      var path2='files.' + index.toString() + '.completed';
+      this.notifyPath(path,100);
+      this.notifyPath(path2,true);
+      this._fireEvent('complete',file);
+      this._currentFile=null;
+      this._processFiles();
+    },
+
+    /**
+     * XMLHttpRequest error event handler
+     * @param event {object}
+     * @private
+     */
+    _onXhrUploadError:function(event){
+      this._isRunning=false;
+      var file=this._currentFile;
+      var index=this._getIndexByFile(file);
+      file.progress=0;
+      file.error=true;
+      var oldId=file.id;
+      var id='Upload Error: ' + file.id;
+      var path='files.' + index.toString() + '.progress';
+      var path2='files.' + index.toString() + '.error';
+      var path3='files.' + index.toString() + '.id';
+      this.notifyPath(path,0);
+      this.notifyPath(path2,true);
+      this.notifyPath(path3,id);
+      file.id=oldId;
+      this._fireEvent('error',file);
+      this._currentFile=null;
+      this._processFiles();
+    },
+
+    /**
+     *  fire event: complete,error,abort
+     *  @param evt {string}
+     *  @param file {object}
+     */
+    _fireEvent:function(evt,file){
+      var data={
+        id:this.id,
+        file:file
+      };
+      this.fire('md-upload-' + evt,data);
+    },
+
+    /**
+     * fake service constructor
+     * @private
+     */
+    _fakeService:function(){
+      this.post=function(file,callback){
+        setTimeout(function(){
+          file.progress=100;
+          callback(null,file);
+        },1000);
+      };
+
+      this.onProgress=function(fn){
+
+      };
+    },
+
+    /***************************** PUBLIC METHODS *********************************************************************/
+
+    clear:function(){
+      this.files=[];
+    },
+
+    show:function(){
+      this.classList.remove('hide');
+    },
+
+    hide:function(){
+      this.classList.add('hide');
+    }
+
+
+  });
+
+
+</script>
+
+
+
+
+
+
+
+
+
+
+
