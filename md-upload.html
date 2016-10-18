@@ -188,7 +188,6 @@
         this._useService=false;
         var xhr = new XMLHttpRequest();
         xhr.upload.addEventListener("progress", this._onXhrUploadProgress.bind(this));
-        xhr.upload.addEventListener("load",this._onXhrUploadComplete.bind(this));
         xhr.upload.addEventListener("error",this._onXhrUploadError.bind(this));
         this._xhr=xhr;
 
@@ -233,7 +232,6 @@
     _destroyXhrEvents:function(){
       var xhr=this._xhr;
       xhr.upload.removeEventListener("progress", this._onXhrUploadProgress.bind(this));
-      xhr.upload.removeEventListener("load",this._onXhrUploadComplete.bind(this));
       xhr.upload.removeEventListener("error",this._onXhrUploadError.bind(this));
       this._xhr=null;
 
@@ -475,6 +473,7 @@
      * @private
      */
     _uploadFileXhr: function(file){
+      var self=this;
       this._currentFile=file;
       var postUrl=this.postUrl;
       var formData = new FormData();
@@ -484,6 +483,12 @@
       xhr.open("POST", postUrl);
       xhr.overrideMimeType('text/plain; charset=x-user-defined-binary');
       xhr.send(formData);
+      xhr.onreadystatechange = function () {
+        if(xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+          var responseObj=JSON.parse(xhr.response);
+          self._onXhrUploadComplete(responseObj);
+        }
+      };
     },
 
     /**
@@ -502,15 +507,17 @@
 
     /**
      * XMLHttpRequest completed event handler
-     * @param event {object}
+     * @param response {object}
      * @private
      */
-    _onXhrUploadComplete:function(event){
+    _onXhrUploadComplete:function(response){
       this._isRunning=false;
       var file=this._currentFile;
       var index=this._getIndexByFile(file);
       file.completed=true;
       file.progress=100;
+      file.url=response.url;
+      file.dataUrl=response.dataUrl;
       var path='files.' + index.toString() + '.progress';
       var path2='files.' + index.toString() + '.completed';
       this.notifyPath(path,100);
