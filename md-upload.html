@@ -474,6 +474,7 @@
      */
     _uploadFileXhr: function(file){
       var self=this;
+      var responseObj
       this._currentFile=file;
       var postUrl=this.postUrl;
       var formData = new FormData();
@@ -482,11 +483,18 @@
       var xhr=this._xhr;
       xhr.open("POST", postUrl);
       xhr.overrideMimeType('text/plain; charset=x-user-defined-binary');
-      xhr.send(formData);
+      try{
+         xhr.send(formData);
+      }catch(ex){
+
+      }
       xhr.onreadystatechange = function () {
         if(xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-          var responseObj=JSON.parse(xhr.response);
-          self._onXhrUploadComplete(responseObj);
+            responseObj=JSON.parse(xhr.response);
+            self._onXhrUploadComplete(responseObj);
+        }else if(xhr.status !==200){
+            responseObj=JSON.parse(xhr.response);
+            self._onXhrUploadError(responseObj);
         }
       };
     },
@@ -512,6 +520,7 @@
      */
     _onXhrUploadComplete:function(response){
       this._isRunning=false;
+      if(!this._currentFile) return;
       var file=this._currentFile;
       var index=this._getIndexByFile(file);
       file.completed=true;
