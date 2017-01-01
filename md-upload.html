@@ -49,6 +49,7 @@
 
     :host input[type=file]{
       visibility: hidden;
+      max-width:50px;
     }
   </style>
   <template>
@@ -131,6 +132,11 @@
         value: function() {
           return [];
         }
+      },
+
+      basicToken:{
+        type:String,
+        value:null
       },
 
       demoService:{
@@ -334,6 +340,8 @@
           this._isRunning=true;
           if(this._useService) this._uploadFileService(file); //file service handler
           else this._uploadFileXhr(file); // internal XMLHttpRequest handler
+        }else{
+          this._fireCompleted();
         }
       }
     },
@@ -474,7 +482,7 @@
      */
     _uploadFileXhr: function(file){
       var self=this;
-      var responseObj
+      var responseObj;
       this._currentFile=file;
       var postUrl=this.postUrl;
       var formData = new FormData();
@@ -483,6 +491,7 @@
       var xhr=this._xhr;
       xhr.open("POST", postUrl);
       xhr.overrideMimeType('text/plain; charset=x-user-defined-binary');
+      if(this.basicToken) xhr.setRequestHeader('Authorization', this.basicToken );
       try{
          xhr.send(formData);
       }catch(ex){
@@ -492,9 +501,11 @@
         if(xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
             responseObj=JSON.parse(xhr.response);
             self._onXhrUploadComplete(responseObj);
-        }else if(xhr.status !==200){
-            responseObj=JSON.parse(xhr.response);
-            self._onXhrUploadError(responseObj);
+        }else if(xhr.status !==200 && xhr.status !==0){
+            if(xhr.response && xhr.response!=='') {
+              responseObj = JSON.parse(xhr.response);
+              self._onXhrUploadError(responseObj);
+            }
         }
       };
     },
@@ -541,9 +552,13 @@
      * @param event {object}
      * @private
      */
-    _onXhrUploadError:function(event){
+    _onXhrUploadError:function(obj){
       this._isRunning=false;
       var file=this._currentFile;
+      if(!file){
+        this._fireEvent('error',obj);
+        return;
+      }
       var index=this._getIndexByFile(file);
       file.progress=0;
       file.error=true;
@@ -572,6 +587,17 @@
         file:file
       };
       this.fire('md-upload-' + evt,data);
+    },
+
+    /***
+     *  fire completed event, sending current files array
+     */
+    _fireCompleted:function(){
+        var data={
+          id:this.id,
+          files:this.files
+        };
+        this.fire('md-upload-completed',data);
     },
 
     /**
